@@ -1,0 +1,28 @@
+name: smoke
+on: [push, pull_request]
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 20 }
+      - name: Demo server answers with indexed sessions
+        shell: bash
+        run: |
+          node docs/demo.js & sleep 6
+          curl -sf -H 'Host: 127.0.0.1:47830' http://127.0.0.1:47830/api/stats | node -e '
+            const j = JSON.parse(require("fs").readFileSync(0, "utf8"));
+            if (!j.stats || j.stats.sessionCount < 20) { console.error(JSON.stringify(j).slice(0, 500)); process.exit(1); }
+            console.log("sessions:", j.stats.sessionCount, "limits:", JSON.stringify(j.limits.fh))'
+      - name: Installer (macOS / Linux)
+        if: runner.os != 'Windows'
+        run: |
+          sh install.sh || exit 1
+          sleep 3
+          curl -sf http://127.0.0.1:47821/api/settings
+          sh install.sh --uninstall
