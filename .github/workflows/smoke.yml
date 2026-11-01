@@ -26,3 +26,9 @@ jobs:
           sleep 3
           curl -sf http://127.0.0.1:47821/api/settings
           sh install.sh --uninstall
+      - name: Update check reaches GitHub
+        shell: bash
+        run: |
+          node docs/demo.js & sleep 6
+          T=$(curl -s -H 'Host: 127.0.0.1:47830' http://127.0.0.1:47830/ | grep -o "TOKEN = '[0-9a-f]*'" | cut -d"'" -f2)
+          curl -sf -X POST -H 'Host: 127.0.0.1:47830' -H "X-Pulse-Token: $T" -H 'Content-Type: application/json' -d '{}' http://127.0.0.1:47830/api/update/check | tee /dev/stderr | grep -q '"latest":"[0-9]'
