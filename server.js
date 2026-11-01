@@ -526,13 +526,17 @@ function newer(a, b) {
 const updInfo = () => ({ version: VERSION, latest: upd.latest, available: !!upd.latest && newer(upd.latest, VERSION),
   checked: upd.checked, err: upd.err, git: fs.existsSync(path.join(__dirname, '.git')) });
 async function checkUpdate() {
-  try {
-    // the API, not raw.githubusercontent.com, which serves stale copies for minutes after a push
-    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/manifest.json`, { signal: AbortSignal.timeout(8000),
-      headers: { Accept: 'application/vnd.github.raw', 'User-Agent': 'claude-pulse' } });
-    if (!r.ok) throw new Error('GitHub returned ' + r.status);
-    upd.latest = String((await r.json()).version || ''); upd.err = '';
-  } catch (e) { upd.err = 'Could not reach GitHub'; }
+  // The API is fresh but rate-limited per IP; raw.githubusercontent.com can be a few minutes stale. Try both.
+  const urls = [[`https://api.github.com/repos/${REPO}/contents/manifest.json`, { Accept: 'application/vnd.github.raw', 'User-Agent': 'claude-pulse' }],
+    [`https://raw.githubusercontent.com/${REPO}/main/manifest.json`, {}]];
+  upd.err = 'Could not reach GitHub';
+  for (const [url, headers] of urls) {
+    try {
+      const r = await fetch(url, { headers, signal: AbortSignal.timeout(8000) });
+      const v = r.ok && String((await r.json()).version || '');
+      if (v) { upd.latest = v; upd.err = ''; break; }
+    } catch {}
+  }
   upd.checked = Date.now();
   return updInfo();
 }
