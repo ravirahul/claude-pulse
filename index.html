@@ -183,6 +183,15 @@ main{flex:1;overflow-y:auto;overflow-x:hidden;padding:12px 12px calc(24px + env(
 .insight{display:flex;gap:9px;align-items:center;font-size:12.5px;color:var(--text-2);min-height:20px;transition:opacity .3s}
 .insight svg{color:var(--cyan)}
 .insight b{color:var(--text);font-weight:600}
+.insight.in-card{margin-top:11px;padding-top:10px;border-top:1px solid var(--edge)}
+.foot{max-width:560px;margin:18px auto 0;display:flex;justify-content:center;align-items:center;flex-wrap:wrap;gap:4px 8px;font-size:11px;color:var(--muted)}
+.foot a,.about a{color:var(--text-2);font-weight:600;cursor:pointer;text-decoration:none}
+.foot a:hover,.about a:hover{color:var(--brand);text-decoration:underline}
+.foot .upd{color:var(--cyan)}
+.about .links2{display:flex;flex-wrap:wrap;gap:8px;margin-top:10px}
+.about .ver{display:flex;align-items:center;flex-wrap:wrap;gap:8px;margin-top:10px;font-size:11.5px;color:var(--muted)}
+.about .sp{flex:1}
+.about button[disabled]{opacity:.5;cursor:default}
 
 /* sessions */
 .search{position:sticky;top:-12px;z-index:3;margin:-12px -12px 0;padding:12px 12px 8px;background:linear-gradient(var(--bg) 70%,transparent)}
@@ -346,6 +355,7 @@ textarea.input{resize:none;height:76px}
     <div class="card" style="padding:6px 8px"><div class="list" id="slist"></div></div>
   </section>
   <section class="view" id="v-stats"></section>
+  <footer class="foot">by <a data-url="https://bliink.in" href="https://bliink.in">Bliink</a><span aria-hidden="true">·</span><span>Claude Pulse v__PULSE_VERSION__</span><span id="footUpd"></span></footer>
 </main>
 
 <div class="scrim" id="scrim"></div>
@@ -371,7 +381,7 @@ textarea.input{resize:none;height:76px}
   </div>
   <label class="check" id="rcRow"><input type="checkbox" id="rc"> Remote Control: continue this session from the Claude app on your phone</label>
   <div class="err" id="err" role="alert"></div>
-  <button class="primary" id="go" style="width:100%;justify-content:center;height:40px"><svg class="i"><use href="#i-play"/></svg><span id="goLbl">Launch on this PC</span></button>
+  <button class="primary" id="go" style="width:100%;justify-content:center;height:40px"><svg class="i"><use href="#i-play"/></svg><span id="goLbl">Launch on this computer</span></button>
   <div class="links" id="links">
     <button class="ghost" data-url="https://claude.ai/new"><svg class="i"><use href="#i-chat"/></svg>New chat</button>
     <button class="ghost" data-url="https://claude.ai/recents"><svg class="i"><use href="#i-clock"/></svg>Recent chats</button>
@@ -384,7 +394,7 @@ textarea.input{resize:none;height:76px}
   <h3 id="setTitle"><svg class="i"><use href="#i-gear"/></svg>Settings<span class="sp"></span>
     <button class="iconbtn close" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></h3>
   <div class="set">
-    <div class="body"><b>Theme</b><p>Auto follows Windows.</p></div>
+    <div class="body"><b>Theme</b><p>Auto follows your system.</p></div>
     <div class="seg" id="themeSeg" role="group" aria-label="Theme" style="margin-left:auto">
       <span class="thumb"></span>
       <button data-t="auto" aria-pressed="false">Auto</button><button data-t="dark" aria-pressed="false">Dark</button><button data-t="light" aria-pressed="false">Light</button>
@@ -397,7 +407,7 @@ textarea.input{resize:none;height:76px}
     <label class="switch"><input type="checkbox" id="sLive" aria-label="Live plan limits"><span></span></label>
   </div>
   <div class="set">
-    <div class="body"><b>Limit alerts</b><p>Windows notification when the 5-hour limit passes 80%, and again when it resets.</p></div>
+    <div class="body"><b>Limit alerts</b><p>Desktop notification when the 5-hour limit passes 80%, and again when it resets.</p></div>
     <label class="switch"><input type="checkbox" id="sAlerts" aria-label="Limit alerts"><span></span></label>
   </div>
   <div class="set" style="flex-wrap:wrap">
@@ -405,6 +415,18 @@ textarea.input{resize:none;height:76px}
       <p>Open Pulse on your phone over your home Wi-Fi. Phones can view everything and start sessions with Remote Control. The first time, your firewall may ask to allow Node.js on private networks: choose Allow.</p></div>
     <label class="switch"><input type="checkbox" id="sLan" aria-label="Phone access"><span></span></label>
     <div id="lanBox" style="width:100%"></div>
+  </div>
+  <div class="set about">
+    <div class="body"><b>About</b>
+      <p>Claude Pulse shows your Claude plan limits with reset times, every Claude Code, Desktop and Cowork session with one-click resume, and stats on tokens, models, projects and tools. It reads Claude's files on this computer and sends nothing anywhere. Free and open source under the MIT license.</p>
+      <p style="margin-top:6px">Developed by <a data-url="https://bliink.in" href="https://bliink.in">Bliink</a>.</p>
+      <div class="links2">
+        <button class="ghost" data-url="https://bliink.in"><svg class="i"><use href="#i-ext"/></svg>bliink.in</button>
+        <button class="ghost" data-url="https://github.com/ravirahul/claude-pulse"><svg class="i"><use href="#i-ext"/></svg>GitHub</button>
+      </div>
+      <div class="ver" aria-live="polite"><span>Version <span class="mono" style="color:var(--text)">__PULSE_VERSION__</span></span><span id="updMsg"></span>
+        <span class="sp"></span><button class="ghost" id="updBtn">Check for updates</button></div>
+    </div>
   </div>
 </div>
 
@@ -520,17 +542,19 @@ function renderHome(D) {
     ${bd}
     <div class="src">${srcTxt}${hint}</div>
   </div>
-  <div class="card today">
-    <div class="stat"><span>Today</span><b class="num">${fT(today.tok)}</b></div><div class="sep"></div>
-    <div class="stat"><span>Prompts</span><b class="num">${fN(today.prompts)}</b></div><div class="sep"></div>
-    <div class="stat"><span>Sessions</span><b class="num">${fN(sessToday)}</b></div>
-    ${vs != null ? `<span class="chip mono" title="Today so far, compared with your median active day over the last 2 weeks (${fT(usual)})">${vs}% of a usual day</span>` : ''}
+  <div class="card">
+    <div class="today">
+      <div class="stat"><span>Today</span><b class="num">${fT(today.tok)}</b></div><div class="sep"></div>
+      <div class="stat"><span>Prompts</span><b class="num">${fN(today.prompts)}</b></div><div class="sep"></div>
+      <div class="stat"><span>Sessions</span><b class="num">${fN(sessToday)}</b></div>
+      ${vs != null ? `<span class="chip mono" title="Today so far, compared with your median active day over the last 2 weeks (${fT(usual)})">${vs}% of a usual day</span>` : ''}
+    </div>
+    <div class="insight in-card" id="insight"></div>
   </div>
   <div class="card">
     <h2>${icon('i-play')}Continue<span class="r"><button class="link" data-act="tab:sessions">All sessions ${icon('i-arrow')}</button></span></h2>
     <div class="list">${running.map(r => row(r, r.live)).join('')}${recent.map(s => row(s)).join('') || '<div class="empty">No sessions yet</div>'}</div>
-  </div>
-  <div class="card" style="padding:11px 13px"><div class="insight" id="insight"></div></div>`;
+  </div>`;
 }
 
 function row(s, l) {
@@ -674,6 +698,7 @@ function renderStats(D) {
 // ---------- render ----------
 function render() {
   const D = state.data; if (!D) return;
+  renderUpd(D.update);
   if (!D.stats) {
     const p = D.indexing.total ? D.indexing.done / D.indexing.total * 100 : 0;
     $('#v-home').innerHTML = `<div class="card"><h2>${icon('i-refresh')}Indexing your history…</h2><div class="note">First run reads every transcript once; after that only new lines are read.</div><div class="progress"><span style="width:${p}%"></span></div><div class="note num" style="margin-top:6px">${D.indexing.done} / ${D.indexing.total} files</div></div>`;
@@ -840,15 +865,63 @@ $('#go').addEventListener('click', async () => {
   go.disabled = false;
   if (ok) { ls.set('cwd', body.cwd); $('#prompt').value = ''; closePanel(); toast(body.rc ? 'Started on your computer. It will appear in the Claude app.' : 'Claude Code is starting in a new terminal'); setTimeout(() => load(true), 4000); }
 });
-$$('#links [data-url]').forEach(b => b.addEventListener('click', () => state.remote ? (location.href = b.dataset.url) : post('/api/open', { url: b.dataset.url })));
+// external links open in the normal browser (the server opens them), on phones in a new tab
+document.addEventListener('click', e => {
+  const b = e.target.closest('[data-url]'); if (!b) return;
+  e.preventDefault();
+  state.remote ? window.open(b.dataset.url, '_blank', 'noopener') : post('/api/open', { url: b.dataset.url });
+});
 
 function applyRemote() {
   // phones: no settings, sessions always use Remote Control, no permission-skipping modes, links open on the phone
   $('#setBtn').hidden = state.remote;
   $('#rcRow').hidden = state.remote;
   $$('#mode [data-pc]').forEach(o => o.hidden = o.disabled = state.remote);
-  $('#goLbl').textContent = state.remote ? 'Start on PC with Remote Control' : 'Launch on this PC';
+  $('#goLbl').textContent = state.remote ? 'Start on computer with Remote Control' : 'Launch on this computer';
 }
+
+// updates: footer hint + About section
+let updState = null;
+function renderUpd(u) {
+  if (!u) return; updState = u;
+  const f = $('#footUpd');
+  f.innerHTML = u.available && !state.remote ? `<span aria-hidden="true">·</span> <button class="link upd" data-act="settings">Update available</button>` : '';
+  if ($('#updBtn').dataset.busy) return;
+  const btn = $('#updBtn'), msg = $('#updMsg');
+  if (u.available) {
+    msg.innerHTML = `· <span style="color:var(--text);font-weight:600">${esc(u.latest)}</span> is available`;
+    btn.textContent = u.git ? 'Update now' : 'Download'; btn.dataset.mode = u.git ? 'update' : 'download';
+  } else {
+    msg.textContent = u.err ? '· ' + u.err : u.checked ? "· You're up to date" : '';
+    btn.textContent = 'Check for updates'; btn.dataset.mode = 'check';
+  }
+}
+$('#updBtn').addEventListener('click', async () => {
+  const btn = $('#updBtn'), msg = $('#updMsg'), mode = btn.dataset.mode || 'check';
+  if (mode === 'download') return post('/api/open', { url: 'https://github.com/ravirahul/claude-pulse' });
+  btn.disabled = true; btn.dataset.busy = 1;
+  btn.textContent = mode === 'update' ? 'Updating…' : 'Checking…';
+  try {
+    const r = await fetch(mode === 'update' ? '/api/update' : '/api/update/check',
+      { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pulse-Token': TOKEN }, body: '{}' });
+    const j = await r.json();
+    if (!r.ok) throw new Error(j.error || 'Something went wrong');
+    if (mode === 'check') { delete btn.dataset.busy; btn.disabled = false; return renderUpd(j); }
+    if (!j.restart) { msg.textContent = '· ' + (j.note || 'Already up to date.'); }
+    else {
+      msg.textContent = '· Updated. Restarting…';
+      if (j.note) toast(j.note);
+      // wait for the restarted server, then load the new version of this page
+      await new Promise(ok => setTimeout(ok, 2500));
+      for (let i = 0; i < 60; i++) {
+        try { if ((await fetch('/api/settings', { cache: 'no-store' })).ok) return location.reload(); } catch {}
+        await new Promise(ok => setTimeout(ok, 1000));
+      }
+      msg.textContent = '· Restart is taking long. Reopen Pulse.';
+    }
+  } catch (e) { msg.textContent = '· ' + e.message; }
+  delete btn.dataset.busy; btn.disabled = false; btn.textContent = 'Check for updates'; btn.dataset.mode = 'check';
+});
 
 // settings
 let pairTimer = 0;

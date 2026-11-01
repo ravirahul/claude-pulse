@@ -13,7 +13,7 @@ using System.Windows.Forms;
 
 [assembly: System.Reflection.AssemblyTitle("Claude Pulse")]
 [assembly: System.Reflection.AssemblyProduct("Claude Pulse")]
-[assembly: System.Reflection.AssemblyVersion("1.0.0.0")]
+[assembly: System.Reflection.AssemblyVersion("1.1.0.0")]
 
 static class Pulse
 {
@@ -112,6 +112,7 @@ static class Pulse
                 WorkingDirectory = Dir, UseShellExecute = false, CreateNoWindow = true,
                 RedirectStandardOutput = true, RedirectStandardError = true,
             };
+            psi.EnvironmentVariables["PULSE_SUPERVISED"] = "1"; // server.js exits to restart after an update
             server = new Process { StartInfo = psi, EnableRaisingEvents = true };
             var log = Path.Combine(DataDir, "server.log");
             server.OutputDataReceived += (s, e) => Log(log, e.Data);

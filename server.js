@@ -514,8 +514,56 @@ function winQuote(a) {
   return '"' + a.replace(/(\\*)"/g, '$1$1\\"').replace(/(\\+)$/, '$1$1') + '"';
 }
 
+// ---------- updates: compare with manifest.json on GitHub; update = git pull + restart ----------
+const VERSION = safeJSON(path.join(__dirname, 'manifest.json'), {}).version || '0.0.0';
+const REPO = 'ravirahul/claude-pulse';
+const upd = { latest: '', checked: 0, err: '' };
+function newer(a, b) {
+  const x = a.split('.').map(Number), y = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) > (y[i] || 0);
+  return false;
+}
+const updInfo = () => ({ version: VERSION, latest: upd.latest, available: !!upd.latest && newer(upd.latest, VERSION),
+  checked: upd.checked, err: upd.err, git: fs.existsSync(path.join(__dirname, '.git')) });
+async function checkUpdate() {
+  try {
+    const r = await fetch(`https://raw.githubusercontent.com/${REPO}/main/manifest.json`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+    if (!r.ok) throw new Error('GitHub returned ' + r.status);
+    upd.latest = String((await r.json()).version || ''); upd.err = '';
+  } catch (e) { upd.err = 'Could not reach GitHub'; }
+  upd.checked = Date.now();
+  return updInfo();
+}
+const git = (...a) => execFileSync('git', a, { cwd: __dirname, encoding: 'utf8', timeout: 60000, windowsHide: true, stdio: 'pipe' }).trim();
+function applyUpdate() {
+  if (!fs.existsSync(path.join(__dirname, '.git'))) throw new Error('This copy was not installed with git. Download the new version from GitHub.');
+  let changed;
+  try {
+    const old = git('rev-parse', 'HEAD');
+    git('pull', '--ff-only', '--quiet');
+    changed = git('diff', '--name-only', old, 'HEAD').split('\n').filter(Boolean);
+  } catch (e) { throw new Error('git pull failed: ' + String(e.stderr || e.message).trim().split('\n')[0]); }
+  if (!changed.length) return { restart: false, note: 'Already up to date.' };
+  if (WIN && changed.some(f => f === 'Pulse.cs' || f === 'build.ps1')) {
+    // the tray app changed: rebuild it, which also restarts everything
+    spawn('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.join(__dirname, 'build.ps1'), '-NoStartup', '-Silent'],
+      { cwd: __dirname, detached: true, stdio: 'ignore', windowsHide: true }).unref();
+    return { restart: true, note: '' };
+  }
+  setTimeout(restartSelf, 400); // after the reply goes out
+  return { restart: true, note: !WIN && changed.includes('install.sh') ? `To finish, run "sh install.sh" in ${__dirname} once.` : '' };
+}
+// The tray app (Windows), launchd or systemd start us again. With no supervisor, start a fresh copy first.
+function restartSelf() {
+  if (!process.env.PULSE_SUPERVISED) {
+    server.close();
+    spawn(process.execPath, process.argv.slice(1), { detached: true, stdio: 'ignore', windowsHide: true }).unref();
+  }
+  process.exit(0);
+}
+
 function openUrl(u) {
-  if (!/^https:\/\/claude\.ai\//.test(u)) throw new Error('Blocked URL');
+  if (!/^https:\/\/(claude\.ai\/|bliink\.in\/?$|github\.com\/ravirahul\/claude-pulse)/.test(u)) throw new Error('Blocked URL');
   const [cmd, ...a] = WIN ? ['rundll32.exe', 'url.dll,FileProtocolHandler'] : MAC ? ['open'] : ['xdg-open'];
   spawn(cmd, [...a, u], { detached: true, stdio: 'ignore' }).on('error', () => {}).unref();
 }
@@ -596,7 +644,7 @@ const server = http.createServer((req, res) => {
 
   if (req.method === 'GET' && url.pathname === '/') {
     return fs.readFile(INDEX, 'utf8', (e, html) => e ? send(res, 500, 'index missing', 'text/plain')
-      : send(res, 200, html.replace('__PULSE_TOKEN__', TOKEN), 'text/html; charset=utf-8'));
+      : send(res, 200, html.replace('__PULSE_TOKEN__', TOKEN).replace(/__PULSE_VERSION__/g, VERSION), 'text/html; charset=utf-8'));
   }
   if (req.method === 'GET' && STATIC[url.pathname]) {
     const [f, type] = STATIC[url.pathname];
@@ -607,7 +655,7 @@ const server = http.createServer((req, res) => {
     refreshLive();
     const base = indexing.running && !Object.keys(cache.files).length ? null : buildStats();
     const openNew = !remote && wantNew; if (openNew) wantNew = false;
-    return send(res, 200, { now: Date.now(), indexing, stats: base, live: liveSessions(), limits: limits(), inv: inventory(), openNew, remote });
+    return send(res, 200, { now: Date.now(), indexing, stats: base, live: liveSessions(), limits: limits(), inv: inventory(), openNew, remote, update: updInfo() });
   }
   // local-only from here on, except launching
   if (remote && !(req.method === 'POST' && url.pathname === '/api/launch')) return send(res, 403, { error: 'Only available on the computer' });
@@ -636,6 +684,8 @@ const server = http.createServer((req, res) => {
         const p = url.pathname;
         if (p === '/api/launch') launch(body, remote);
         else if (p === '/api/open') openUrl(String(body.url || ''));
+        else if (p === '/api/update/check') return send(res, 200, await checkUpdate());
+        else if (p === '/api/update') return send(res, 200, applyUpdate());
         else if (p === '/api/rescan') { cache = { v: CACHE_VERSION, files: {} }; statsMemo = null; scan(); }
         else if (p === '/api/settings') {
           for (const k of ['liveLimits', 'alerts']) if (typeof body[k] === 'boolean') settings[k] = body[k];
@@ -673,4 +723,5 @@ function relisten() {
 server.on('error', e => { console.error(e.message); process.exit(e.code === 'EADDRINUSE' ? 3 : 1); });
 relisten();
 scan();
+setTimeout(checkUpdate, 15000); setInterval(checkUpdate, 12 * 3600e3).unref();
 setInterval(() => { if (!indexing.running && Date.now() - lastScan > 60000) scan(); refreshLive(); notify(); }, 30000).unref();

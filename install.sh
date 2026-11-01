@@ -26,7 +26,7 @@ if [ "$OS" = Darwin ]; then
 <plist version="1.0"><dict>
   <key>Label</key><string>com.claudepulse.server</string>
   <key>ProgramArguments</key><array><string>$NODE</string><string>--max-old-space-size=192</string><string>$DIR/server.js</string></array>
-  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string></dict>
+  <key>EnvironmentVariables</key><dict><key>PATH</key><string>$PATH</string><key>PULSE_SUPERVISED</key><string>1</string></dict>
   <key>RunAtLoad</key><true/>
   <key>KeepAlive</key><true/>
   <key>StandardOutPath</key><string>$LOG/server.log</string>
@@ -72,7 +72,7 @@ Description=Claude Pulse server
 
 [Service]
 ExecStart="$NODE" --max-old-space-size=192 "$DIR/server.js"
-Environment="PATH=$PATH"
+Environment="PATH=$PATH" "PULSE_SUPERVISED=1"
 Restart=always
 RestartSec=3
 

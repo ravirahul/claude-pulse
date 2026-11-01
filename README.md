@@ -32,7 +32,7 @@ git clone https://github.com/ravirahul/claude-pulse ~/.local/share/claude-pulse
 sh ~/.local/share/claude-pulse/install.sh
 ```
 
-**Update:** `git pull` in that folder, then run the same install command again.
+**Update:** Settings (gear) > About > Check for updates > Update now. Pulse also checks GitHub twice a day and shows "Update available" in the footer. By hand: `git pull` in the install folder, then run the same install command again.
 **Uninstall:** Windows: tray > Quit, then delete the folder and the "Claude Pulse" shortcuts in Start Menu and Startup. macOS / Linux: `sh install.sh --uninstall`, then delete the folder.
 
 ## Install steps (for Claude)

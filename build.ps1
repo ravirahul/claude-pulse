@@ -1,7 +1,7 @@
 # Builds ClaudePulse.exe with the C# compiler that ships with Windows, then installs shortcuts.
 # Usage:  powershell -ExecutionPolicy Bypass -File build.ps1   [-NoStartup]
 # Needs Node.js 18+. The C# compiler ships with Windows (.NET Framework 4).
-param([switch]$NoStartup)
+param([switch]$NoStartup, [switch]$Silent)
 $ErrorActionPreference = 'Stop'
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 $csc = "$env:WINDIR\Microsoft.NET\Framework64\v4.0.30319\csc.exe"
@@ -35,4 +35,4 @@ if (-not $NoStartup) { New-Shortcut (Join-Path ([Environment]::GetFolderPath('St
 
 Write-Host "Built $exe"
 Write-Host 'Start Menu shortcut added. Pin it: Start > Claude Pulse > right-click > Pin to taskbar.'
-Start-Process $exe
+if ($Silent) { Start-Process $exe '--silent' } else { Start-Process $exe }
