@@ -527,7 +527,9 @@ const updInfo = () => ({ version: VERSION, latest: upd.latest, available: !!upd.
   checked: upd.checked, err: upd.err, git: fs.existsSync(path.join(__dirname, '.git')) });
 async function checkUpdate() {
   try {
-    const r = await fetch(`https://raw.githubusercontent.com/${REPO}/main/manifest.json`, { signal: AbortSignal.timeout(8000), cache: 'no-store' });
+    // the API, not raw.githubusercontent.com, which serves stale copies for minutes after a push
+    const r = await fetch(`https://api.github.com/repos/${REPO}/contents/manifest.json`, { signal: AbortSignal.timeout(8000),
+      headers: { Accept: 'application/vnd.github.raw', 'User-Agent': 'claude-pulse' } });
     if (!r.ok) throw new Error('GitHub returned ' + r.status);
     upd.latest = String((await r.json()).version || ''); upd.err = '';
   } catch (e) { upd.err = 'Could not reach GitHub'; }
