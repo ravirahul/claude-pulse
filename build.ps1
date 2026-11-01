@@ -9,7 +9,7 @@ $exe = Join-Path $here 'ClaudePulse.exe'
 $ico = Join-Path $here 'pulse.ico'
 $node = Get-Command node -ErrorAction SilentlyContinue
 if (-not $node) { throw 'Node.js 18 or newer is required: https://nodejs.org' }
-if ([int]((& node -p 'process.versions.node.split(".")[0]')) -lt 18) { throw 'Node.js 18 or newer is required.' }
+if ([int]((& node -v) -replace '^v(\d+).*', '$1') -lt 18) { throw 'Node.js 18 or newer is required.' }
 $refs = '/r:System.Windows.Forms.dll', '/r:System.Drawing.dll', '/r:System.Web.Extensions.dll'
 
 Get-Process ClaudePulse -ErrorAction SilentlyContinue | Stop-Process -Force
