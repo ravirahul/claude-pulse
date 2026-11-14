@@ -272,6 +272,21 @@ textarea.input{resize:none;height:76px}
 .devices{display:grid;gap:4px;margin-top:8px}
 .check{display:flex;gap:10px;align-items:center;font-size:12px;color:var(--text-2);margin-bottom:12px;cursor:pointer}
 .check input{width:16px;height:16px;accent-color:var(--cyan)}
+/* room light */
+.lrow{padding:12px 0;border-top:1px solid var(--edge)}
+.lrow .hd{display:flex;align-items:center;gap:8px;font-size:13px;font-weight:600}
+.lrow .hd .sp{flex:1}
+.slider{width:100%;accent-color:var(--cyan);margin-top:10px;height:24px;cursor:pointer}
+.swatches{display:flex;flex-wrap:wrap;gap:10px;margin-top:10px}
+.sw{width:32px;height:32px;border-radius:50%;border:1px solid var(--edge-2);position:relative;cursor:pointer;transition:transform .15s var(--ease);box-shadow:inset 0 0 0 2px rgba(255,255,255,.12)}
+.sw:hover{transform:scale(1.08)}
+.sw:active{transform:scale(.94)}
+.sw[aria-pressed="true"]{outline:2px solid var(--text);outline-offset:2px}
+.sw:focus-visible{outline:2px solid var(--cyan);outline-offset:2px}
+.sw.custom{background:conic-gradient(#ff3b30,#ffcc00,#34c759,#00c7be,#0a84ff,#bf5af2,#ff3b30);overflow:hidden}
+.sw.custom input{position:absolute;inset:0;width:100%;height:100%;opacity:0;cursor:pointer;border:0;padding:0}
+#lightSheet[aria-busy="true"] .lctl{opacity:.5;pointer-events:none}
+#bulbBtn.lit svg{color:var(--bulb,#ffcc66);filter:drop-shadow(0 0 6px var(--bulb,#ffcc66))}
 
 #tip{position:fixed;z-index:50;pointer-events:none;background:var(--glass-3);border:1px solid var(--edge-2);border-radius:10px;padding:7px 9px;font-size:11.5px;color:var(--text);
   -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);box-shadow:0 8px 24px rgba(0,0,0,.3);opacity:0;transform:translateY(4px);transition:opacity .12s,transform .12s;max-width:240px;white-space:pre-line}
@@ -317,6 +332,7 @@ textarea.input{resize:none;height:76px}
   <symbol id="i-auto" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M12 3v18a9 9 0 0 0 0-18z" fill="currentColor"/></symbol>
   <symbol id="i-phone" viewBox="0 0 24 24"><rect x="7" y="2" width="10" height="20" rx="2"/><path d="M11 18h2"/></symbol>
   <symbol id="i-search" viewBox="0 0 24 24"><circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/></symbol>
+  <symbol id="i-bulb" viewBox="0 0 24 24"><path d="M9 18h6M10 21h4M12 3a6 6 0 0 0-3.6 10.8c.6.5 1 1.2 1 2V16h5.2v-.2c0-.8.4-1.5 1-2A6 6 0 0 0 12 3z"/></symbol>
   <symbol id="i-arrow" viewBox="0 0 24 24"><path d="M5 12h14M13 6l6 6-6 6"/></symbol>
 </svg>
 
@@ -327,6 +343,7 @@ textarea.input{resize:none;height:76px}
       <h1>Claude Pulse</h1>
       <div class="status" id="status" aria-live="polite"><span class="dot off"></span><span>Connecting…</span></div>
     </div>
+    <button class="iconbtn" id="bulbBtn" aria-label="Room light" title="Room light" hidden><svg class="i"><use href="#i-bulb"/></svg></button>
     <button class="iconbtn" id="themeBtn" aria-label="Theme"><svg class="i"><use href="#i-auto"/></svg></button>
     <button class="iconbtn" id="setBtn" aria-label="Settings" title="Settings"><svg class="i"><use href="#i-gear"/></svg></button>
     <button class="primary" id="newBtn" title="New Claude Code session (N)"><svg class="i"><use href="#i-plus"/></svg>New</button>
@@ -389,6 +406,23 @@ textarea.input{resize:none;height:76px}
   </div>
 </div>
 
+<div class="sheet" id="lightSheet" role="dialog" aria-modal="true" aria-labelledby="lightTitle">
+  <div class="grab"></div>
+  <h3 id="lightTitle"><svg class="i"><use href="#i-bulb"/></svg>Room light<span class="sp"></span>
+    <button class="iconbtn close" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></h3>
+  <p class="note" id="lbNote" aria-live="polite" style="margin:-4px 0 4px">Reading the light…</p>
+  <div class="lctl">
+    <div class="lrow"><div class="hd"><span>Power</span><span class="sp"></span>
+      <label class="switch"><input type="checkbox" id="lbOn" aria-label="Light power"><span></span></label></div></div>
+    <div class="lrow"><div class="hd"><label for="lbBri">Brightness</label><span class="sp"></span><span class="mono note" id="lbBriV">–</span></div>
+      <input type="range" class="slider" id="lbBri" min="1" max="100" value="100"></div>
+    <div class="lrow"><div class="hd"><span id="lbColLabel">Colour</span></div>
+      <div class="swatches" id="lbSw" role="group" aria-labelledby="lbColLabel"></div></div>
+  </div>
+  <div class="set"><div class="body"><b>Pause Claude signals</b>
+    <p>The light stays as you set it. Claude won't change its colour until you turn this off.</p></div>
+    <label class="switch"><input type="checkbox" id="lbPause" aria-label="Pause Claude signals"><span></span></label></div>
+</div>
 <div class="sheet" id="settings" role="dialog" aria-modal="true" aria-labelledby="setTitle">
   <div class="grab"></div>
   <h3 id="setTitle"><svg class="i"><use href="#i-gear"/></svg>Settings<span class="sp"></span>
@@ -409,6 +443,12 @@ textarea.input{resize:none;height:76px}
   <div class="set">
     <div class="body"><b>Limit alerts</b><p>Desktop notification when the 5-hour limit passes 80%, and again when it resets.</p></div>
     <label class="switch"><input type="checkbox" id="sAlerts" aria-label="Limit alerts"><span></span></label>
+  </div>
+  <div class="set" style="flex-wrap:wrap">
+    <div class="body"><b>Smart light</b>
+      <p>Runs a light helper script on this computer and keeps it running. Your room light turns amber when Claude needs you, green when a long task finishes, red on errors, and pulses when the 5-hour limit passes 80% or resets.</p></div>
+    <label class="switch"><input type="checkbox" id="sLight" aria-label="Smart light"><span></span></label>
+    <div id="lightBox" style="width:100%"></div>
   </div>
   <div class="set" style="flex-wrap:wrap">
     <div class="body"><b>Phone access</b>
@@ -932,7 +972,7 @@ async function openSettings() {
     const s = await (await fetch('/api/settings')).json();
     $('#sLive').checked = s.liveLimits; $('#sAlerts').checked = s.alerts; $('#sLan').checked = s.lan;
     $('#liveErr').textContent = state.data?.limits?.liveErr || '';
-    renderLan(s);
+    renderLan(s); renderLight(s);
   } catch {}
 }
 $('#setBtn').addEventListener('click', openSettings);
@@ -962,6 +1002,101 @@ function renderLan(s) {
   $$('[data-rm]', box).forEach(b => b.addEventListener('click', async () => {
     await post('/api/devices/remove', { id: b.dataset.rm }); renderLan(await (await fetch('/api/settings')).json());
   }));
+}
+$('#sLight').addEventListener('change', async e => { await saveSetting('light', e.target.checked); const s = await (await fetch('/api/settings')).json(); renderLight(s); bulbBtnSync(s); });
+
+// ---------- room light ----------
+// [label, command, swatch colour]; colour swatches send {colour}, whites send {warmth}
+const SWATCHES = [['Warm white', { warmth: 0 }, '#ffd59a'], ['Cool white', { warmth: 100 }, '#eef4ff'], ['Red', '#ff3b30'], ['Orange', '#ff9500'],
+  ['Yellow', '#ffcc00'], ['Green', '#00ff00'], ['Teal', '#00c7be'], ['Blue', '#0a84ff'], ['Indigo', '#5e5ce6'], ['Purple', '#bf5af2'], ['Pink', '#ff2d92']];
+$('#lbSw').innerHTML = SWATCHES.map(([n, v, c], i) => `<button type="button" class="sw" data-i="${i}" aria-label="${n}" title="${n}" aria-pressed="false" style="background:${c || v}"></button>`).join('')
+  + '<label class="sw custom" title="Custom colour"><input type="color" id="lbCustom" aria-label="Custom colour" value="#ff9500"></label>';
+let lightCur = null;   // last read state of the first light
+function bulbBtnSync(s) { $('#bulbBtn').hidden = !s || !s.light || state.remote; }
+function renderBulbs(j) {
+  const all = j.bulbs || [], ok = all.filter(b => b.ok), b = ok[0], bad = all.filter(x => !x.ok).map(x => x.name);
+  $('#lbPause').checked = !!j.paused;
+  $('#lbNote').textContent = !all.length ? 'No lights set up yet.'
+    : !b ? "Couldn't reach the light. It may be switched off at the wall, or its Wi-Fi is weak. Try again in a moment."
+    : ok.map(x => x.name).join(', ') + (bad.length ? ` · not answering: ${bad.join(', ')}` : '') + (j.paused ? ' · Claude signals paused' : '');
+  if (!b) return;
+  lightCur = b;
+  $('#lbOn').checked = b.on;
+  $('#lbBri').value = b.brightness; $('#lbBriV').textContent = b.brightness + '%';
+  const white = b.warmth < 50 ? 0 : 1;   // index of the matching white swatch
+  $$('#lbSw .sw[data-i]').forEach(x => {
+    const i = +x.dataset.i, v = SWATCHES[i][1];
+    x.setAttribute('aria-pressed', String(b.mode === 'colour' ? typeof v === 'string' && v.toLowerCase() === b.colour : i === white));
+  });
+  const tint = !b.on ? '' : b.mode === 'colour' ? b.colour : SWATCHES[white][2];
+  $('#bulbBtn').classList.toggle('lit', !!tint);
+  tint ? $('#bulbBtn').style.setProperty('--bulb', tint) : $('#bulbBtn').style.removeProperty('--bulb');
+}
+async function lightDo(url, body) {
+  $('#lightSheet').setAttribute('aria-busy', 'true');
+  try {
+    const r = await fetch(url, body ? { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pulse-Token': TOKEN }, body: JSON.stringify(body) } : { cache: 'no-store' });
+    const j = await r.json();
+    if (!r.ok) { $('#lbNote').textContent = j.error || 'Something went wrong.'; return null; }
+    return j;
+  } catch { $('#lbNote').textContent = 'Pulse is not responding.'; return null; }
+  finally { $('#lightSheet').removeAttribute('aria-busy'); }
+}
+async function lightControl(cmd) {
+  const list = await lightDo('/api/light/control', cmd);
+  if (!list) return;
+  if (list.some(x => !x.ok)) toast("The light didn't answer. Try again.");
+  renderBulbs({ bulbs: list, paused: $('#lbPause').checked });
+}
+async function openLight() {
+  openPanel('lightSheet');
+  $('#lbNote').textContent = 'Reading the light…';
+  const j = await lightDo('/api/light/bulbs'); j && renderBulbs(j);
+}
+$('#bulbBtn').addEventListener('click', openLight);
+$('#lbOn').addEventListener('change', e => lightControl({ on: e.target.checked }));
+$('#lbBri').addEventListener('input', e => { $('#lbBriV').textContent = e.target.value + '%'; });
+$('#lbBri').addEventListener('change', e => lightControl({ brightness: +e.target.value, ...(lightCur && lightCur.mode === 'colour' ? { colour: lightCur.colour } : {}) }));
+$('#lbSw').addEventListener('click', e => {
+  const x = e.target.closest('.sw[data-i]'); if (!x) return;
+  const v = SWATCHES[x.dataset.i][1]; lightControl(typeof v === 'string' ? { colour: v } : v);
+});
+$('#lbCustom').addEventListener('change', e => lightControl({ colour: e.target.value }));
+$('#lbPause').addEventListener('change', async e => {
+  const j = await lightDo('/api/light/pause', { on: e.target.checked });
+  if (j) toast(j.paused ? 'Claude signals paused' : 'Claude signals back on'); else e.target.checked = !e.target.checked;
+});
+fetch('/api/settings').then(r => r.ok ? r.json() : null).then(bulbBtnSync).catch(() => {});
+let lightTimer = 0;
+function renderLight(s) {
+  $('#sLight').checked = s.light;
+  const box = $('#lightBox');
+  clearTimeout(lightTimer);
+  if (!s.light) { box.innerHTML = ''; return; }
+  box.innerHTML = `
+    <div class="field" style="margin:10px 0 6px"><label for="lightScript">Helper script (.py)</label>
+      <input class="input mono" id="lightScript" spellcheck="false" autocomplete="off" placeholder="C:\path\to\claude_light.py" value="${esc(s.lightScript || '')}" aria-describedby="lightErr">
+      <p class="err" id="lightErr" role="alert" style="margin:0"></p></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="ghost" id="lightTest">${icon('i-bulb')}Test blink</button>
+      <span class="note" id="lightStatus" aria-live="polite">Checking…</span></div>`;
+  $('#lightScript').addEventListener('change', async e => {
+    const j = await saveSetting('lightScript', e.target.value);
+    $('#lightErr').textContent = j.error || '';
+    if (!j.error) { toast('Light helper saved'); lightTimer = setTimeout(lightStatus, 2500); }
+  });
+  $('#lightTest').addEventListener('click', () => post('/api/light/test', {}).then(ok => ok && toast('Sent a test blink')));
+  lightStatus();
+}
+async function lightStatus() {
+  const el = $('#lightStatus'); if (!el) return;
+  try {
+    const j = await (await fetch('/api/light', { cache: 'no-store' })).json();
+    el.textContent = !j.running ? 'Helper not running yet. Pulse retries every 30 seconds.'
+      : !j.home ? `Running, but this computer isn't on your home Wi-Fi${j.ssid ? ` (on ${j.ssid})` : ''}, so the light stays as it is.`
+      : `Running on ${j.ssid} · ${j.bulbs.length} light${j.bulbs.length === 1 ? '' : 's'}: ${j.bulbs.join(', ')}${j.waiting ? ' · waiting on you' : ''}`;
+  } catch { el.textContent = 'Pulse is not responding.'; }
+  if ($('#sLight').checked) lightTimer = setTimeout(lightStatus, 10000);
 }
 async function pair() {
   const r = await fetch('/api/pair', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Pulse-Token': TOKEN }, body: '{}' });

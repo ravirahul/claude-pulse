@@ -35,6 +35,18 @@ static class Pulse
     static void Main(string[] args)
     {
         if (args.Length == 2 && args[0] == "--make-icon") { File.WriteAllBytes(args[1], MakeIco()); return; }
+        if (args.Length == 2 && args[0] == "--make-states")   // preview strip of tray states, for checking the look
+        {
+            int[][] st = { new[] { -1, -1, 0 }, new[] { 9, -1, 0 }, new[] { 55, -1, 0 }, new[] { 85, -1, 0 }, new[] { 100, -1, 0 }, new[] { 9, 3, 0 }, new[] { 9, 7, 0 }, new[] { 30, -1, 1 } };
+            using (var strip = new Bitmap(st.Length * 72, 64))
+            using (var g = Graphics.FromImage(strip))
+            {
+                g.Clear(Color.FromArgb(32, 32, 32));
+                for (int i = 0; i < st.Length; i++) using (var b = DrawIcon(64, st[i][0], st[i][1], st[i][2] == 1)) g.DrawImage(b, i * 72 + 4, 0);
+                strip.Save(args[1], System.Drawing.Imaging.ImageFormat.Png);
+            }
+            return;
+        }
         if (args.Length == 3 && args[0] == "--make-png") { using (var b = DrawIcon(int.Parse(args[2]))) b.Save(args[1], System.Drawing.Imaging.ImageFormat.Png); return; }
 
         bool created;
@@ -82,6 +94,11 @@ static class Pulse
         var first = new System.Windows.Forms.Timer { Interval = 5000 };
         first.Tick += (s, e) => { first.Stop(); Poll(); };
         first.Start();
+        anim = new System.Windows.Forms.Timer { Interval = 100 };
+        anim.Tick += (s, e) => { iconPhase++; RenderTray(); };
+        var state = new System.Windows.Forms.Timer { Interval = 3000 };
+        state.Tick += (s, e) => StatePoll();
+        state.Start();
 
         if (Array.IndexOf(args, "--silent") < 0) ToggleWindow(true);
         Application.Run();
@@ -286,7 +303,8 @@ static class Pulse
         string tip = "Claude Pulse";
         if (fh != null) tip += "\n5h " + fh + "%" + (fhReset != null ? " · resets " + When(fhReset) : "");
         if (sd != null) tip += "\nWeek " + sd + "%";
-        tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
+        limitTip = tip;
+        SetTip();
 
         if (!(Get(d, "alerts") is bool && (bool)Get(d, "alerts"))) return;
         long now = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
@@ -357,15 +375,89 @@ static class Pulse
         catch (Exception ex) { MessageBox.Show("Could not update startup: " + ex.Message, "Claude Pulse"); }
     }
 
-    // ---------- icon ----------
-    static Bitmap DrawIcon(int size)
+    // ---------- live tray icon ----------
+    // Tile = 5-hour budget left (drains from the top; coral, amber at 50%, red at 80%; flat line at 100%).
+    // The pulse line scrolls like an ECG while a Claude Code session is working; an amber dot blinks when
+    // Claude needs you (known from the optional light helper, which receives Claude Code's hook events).
+    static int iconFh = -1, iconLive, iconBusy, iconWaiting, iconPhase, statePolling;
+    static string limitTip = "Claude Pulse", lastKey = "";
+    static System.Windows.Forms.Timer anim;
+    static Icon shown;
+
+    static void StatePoll()
     {
+        if (Interlocked.Exchange(ref statePolling, 1) == 1) return;
+        ThreadPool.QueueUserWorkItem(_ =>
+        {
+            System.Collections.Generic.Dictionary<string, object> d = null;
+            try
+            {
+                using (var wc = new System.Net.WebClient { Encoding = Encoding.UTF8 })
+                    d = new System.Web.Script.Serialization.JavaScriptSerializer().Deserialize<System.Collections.Generic.Dictionary<string, object>>(wc.DownloadString(Url + "api/tray/state"));
+            }
+            catch { }
+            Interlocked.Exchange(ref statePolling, 0);
+            if (d != null) ui.Post(__ => OnState(d), null);
+        });
+    }
+
+    static int Int(object v, int dflt) { try { return v == null ? dflt : Convert.ToInt32(v); } catch { return dflt; } }
+
+    static void OnState(System.Collections.Generic.Dictionary<string, object> d)
+    {
+        iconFh = Int(Get(d, "fh"), -1); iconLive = Int(Get(d, "live"), 0); iconBusy = Int(Get(d, "busy"), 0); iconWaiting = Int(Get(d, "waiting"), 0);
+        bool moving = iconBusy > 0 || iconWaiting > 0;
+        if (moving && !anim.Enabled) anim.Start();
+        if (!moving && anim.Enabled) { anim.Stop(); iconPhase = 0; }
+        RenderTray();
+        SetTip();
+    }
+
+    static void SetTip()
+    {
+        string st = iconWaiting > 0 ? "Claude needs you" : iconBusy > 0 ? iconBusy + " working" : iconLive > 0 ? iconLive + " running, idle" : "";
+        string tip = limitTip + (st.Length > 0 ? "\n" + st : "");
+        tray.Text = tip.Length > 63 ? tip.Substring(0, 63) : tip;
+    }
+
+    static void RenderTray()
+    {
+        int size = Math.Max(16, SystemInformation.SmallIconSize.Width);
+        int ecg = iconBusy > 0 ? iconPhase : -1;
+        bool dot = iconWaiting > 0 && (iconPhase / 5) % 2 == 0;   // 1 s blink at 100 ms frames
+        string key = size + "|" + iconFh + "|" + ecg + "|" + dot;
+        if (key == lastKey) return;
+        lastKey = key;
+        Icon ico;
+        using (var bmp = DrawIcon(size, iconFh, ecg, dot)) ico = ToIcon(bmp);
+        var old = shown; tray.Icon = ico; shown = ico;
+        if (old != null) old.Dispose();
+    }
+
+    static Icon ToIcon(Bitmap bmp)
+    {
+        byte[] png; using (var m = new MemoryStream()) { bmp.Save(m, System.Drawing.Imaging.ImageFormat.Png); png = m.ToArray(); }
+        var o = new MemoryStream();
+        var w = new BinaryWriter(o);
+        w.Write((short)0); w.Write((short)1); w.Write((short)1);
+        w.Write((byte)bmp.Width); w.Write((byte)bmp.Height); w.Write((byte)0); w.Write((byte)0);
+        w.Write((short)1); w.Write((short)32); w.Write(png.Length); w.Write(22); w.Write(png);
+        o.Position = 0;
+        return new Icon(o, bmp.Width, bmp.Height);
+    }
+
+    static Color Mix(Color a, Color b, float t) { return Color.FromArgb((int)(a.R + (b.R - a.R) * t), (int)(a.G + (b.G - a.G) * t), (int)(a.B + (b.B - a.B) * t)); }
+
+    // fh: 5-hour % used (-1 unknown = full tile); phase: ECG scroll frame (-1 = still); dot: needs-you badge
+    static Bitmap DrawIcon(int size, int fh = -1, int phase = -1, bool dot = false)
+    {
+        var tier = fh >= 80 ? Color.FromArgb(226, 84, 84) : fh >= 50 ? Color.FromArgb(234, 163, 58) : Color.FromArgb(224, 133, 102);
         var bmp = new Bitmap(size, size);
         using (var g = Graphics.FromImage(bmp))
         {
             g.SmoothingMode = SmoothingMode.AntiAlias;
             g.Clear(Color.Transparent);
-            float r = size * 0.24f, s = size - 1;
+            float r = size * 0.24f, s = size - 1, k = size / 24f;
             using (var path = new GraphicsPath())
             {
                 path.AddArc(0, 0, r * 2, r * 2, 180, 90);
@@ -373,12 +465,37 @@ static class Pulse
                 path.AddArc(s - r * 2, s - r * 2, r * 2, r * 2, 0, 90);
                 path.AddArc(0, s - r * 2, r * 2, r * 2, 90, 90);
                 path.CloseFigure();
-                using (var b = new SolidBrush(Color.FromArgb(224, 133, 102))) g.FillPath(b, path);
+                float left = fh < 0 ? 1f : Math.Max(0, 100 - fh) / 100f;
+                using (var b = new SolidBrush(Mix(tier, Color.Black, 0.55f))) g.FillPath(b, path);   // used part
+                g.SetClip(path);
+                using (var b = new SolidBrush(tier)) g.FillRectangle(b, 0, s * (1 - left), size, size);   // budget left
+                g.ResetClip();
             }
-            float k = size / 24f;
-            var pts = new[] { new PointF(3 * k, 12.5f * k), new PointF(7 * k, 12.5f * k), new PointF(10 * k, 5.5f * k), new PointF(14 * k, 18.5f * k), new PointF(17 * k, 12.5f * k), new PointF(21 * k, 12.5f * k) };
             using (var pen = new Pen(Color.White, Math.Max(1.6f, 2.4f * k)) { LineJoin = LineJoin.Round, StartCap = LineCap.Round, EndCap = LineCap.Round })
-                g.DrawLines(pen, pts);
+            {
+                if (fh >= 100) g.DrawLine(pen, 3 * k, 12.5f * k, 21 * k, 12.5f * k);   // flatline: limit reached
+                else if (phase < 0)
+                    g.DrawLines(pen, new[] { new PointF(3 * k, 12.5f * k), new PointF(7 * k, 12.5f * k), new PointF(10 * k, 5.5f * k), new PointF(14 * k, 18.5f * k), new PointF(17 * k, 12.5f * k), new PointF(21 * k, 12.5f * k) });
+                else
+                {
+                    // one heartbeat per 24 units, scrolling left 2 units a frame, drawn twice to wrap
+                    g.SetClip(new RectangleF(2.5f * k, 0, 19 * k, size));
+                    float off = (phase * 2) % 24;
+                    for (int c = 0; c <= 24; c += 24)
+                    {
+                        float x0 = c - off;
+                        g.DrawLines(pen, new[] { new PointF((x0 + 0) * k, 12.5f * k), new PointF((x0 + 7) * k, 12.5f * k), new PointF((x0 + 10) * k, 5.5f * k),
+                            new PointF((x0 + 14) * k, 18.5f * k), new PointF((x0 + 17) * k, 12.5f * k), new PointF((x0 + 24) * k, 12.5f * k) });
+                    }
+                    g.ResetClip();
+                }
+            }
+            if (dot)
+            {
+                float d = size * 0.44f;
+                using (var b = new SolidBrush(Color.FromArgb(48, 209, 88))) g.FillEllipse(b, size - d, 0, d - 0.5f, d - 0.5f);
+                using (var p = new Pen(Color.FromArgb(10, 60, 25), Math.Max(1f, k))) g.DrawEllipse(p, size - d, 0, d - 0.5f, d - 0.5f);
+            }
         }
         return bmp;
     }

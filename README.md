@@ -67,6 +67,12 @@ If a user gave you this repo's link and asked you to install it:
 ### Alerts
 When the 5-hour limit passes 80%, and again when it resets. Windows: tray balloon. macOS: Notification Center. Linux: `notify-send`.
 
+### Tray icon (Windows)
+The tile is your 5-hour budget: it drains from the top as you use it and turns amber at 50% and red at 80%; the line goes flat at 100%. The pulse line scrolls while a Claude Code session is working, and a green dot blinks when Claude needs you (needs the smart light helper below, which receives Claude Code's hook events).
+
+### Smart light (optional)
+Settings > Smart light runs a light helper script of your own (a `.py` that listens on `127.0.0.1:8788`) and keeps it running. Point your Claude Code hooks at it (`curl -X POST --data-binary @- http://127.0.0.1:8788/<EventName>`), and Pulse also sends `PulseLimit` / `PulseReset` and a `Test` blink. When it's on, the bulb button next to the theme toggle controls the light (power, brightness, colour) and can pause Claude's signals. The helper answers `GET /status`, `GET /bulbs`, `POST /control` and `POST /Pause`.
+
 ### Phone (home Wi-Fi)
 Settings > Phone access > Pair a phone > scan the QR code. Each phone gets its own key (cookie); remove devices in Settings. Phones can view everything and start or resume sessions, which always use `--remote-control` so you continue them in the Claude app. Phones can't change settings or use Auto / Accept-edits modes. Traffic is plain HTTP on your LAN, so only turn this on for a network you trust.
 

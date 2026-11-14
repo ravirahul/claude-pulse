@@ -28,7 +28,7 @@ fs.writeFileSync(path.join(DATA_DIR, 'token'), TOKEN); // read by the tray app (
 
 // ---------- settings ----------
 const SETTINGS_FILE = path.join(DATA_DIR, 'settings.json');
-const settings = Object.assign({ liveLimits: false, lan: false, alerts: true, devices: [] }, safeJSON0(SETTINGS_FILE));
+const settings = Object.assign({ liveLimits: false, lan: false, alerts: true, devices: [], light: false, lightScript: '', lightPaused: false }, safeJSON0(SETTINGS_FILE));
 function saveSettings() { fs.writeFileSync(SETTINGS_FILE, JSON.stringify(settings, null, 1)); }
 function safeJSON0(f) { try { return JSON.parse(fs.readFileSync(f, 'utf8')); } catch { return {}; } }
 
@@ -351,6 +351,32 @@ function notify() {
     : spawn('notify-send', ['-a', 'Claude Pulse', title, body], { stdio: 'ignore' });
   p.on('error', () => {});
 }
+
+// ---------- smart light (optional) ----------
+// Pulse runs a light helper script (e.g. a Tuya bulb daemon) and keeps it alive. The helper listens on
+// 127.0.0.1:8788; Claude Code hooks POST to it directly, and Pulse adds the limit events below.
+const LIGHT = 'http://127.0.0.1:8788';
+let lightProc = null, lightRetry = 0, lightFor = 0, lightReset = 0;
+function lightSync() {
+  const want = settings.light && /\.py$/i.test(settings.lightScript) && fs.existsSync(settings.lightScript);
+  if (want && !lightProc) {
+    lightProc = spawn(WIN ? 'pythonw' : 'python3', [settings.lightScript, ...(settings.lightPaused ? ['--paused'] : [])], { stdio: 'ignore', windowsHide: true, cwd: path.dirname(settings.lightScript) });
+    lightProc.on('error', () => {});
+    lightProc.on('exit', () => { lightProc = null; clearTimeout(lightRetry); lightRetry = setTimeout(lightSync, 30000); });
+  } else if (!want && lightProc) lightProc.kill();
+}
+// pass a Pulse request through to the helper (bulb state can take a few seconds on a weak Wi-Fi link)
+function lightCall(res, p, body) {
+  fetch(LIGHT + p, body ? { method: 'POST', body: JSON.stringify(body), signal: AbortSignal.timeout(20000) } : { signal: AbortSignal.timeout(20000) })
+    .then(r => r.json()).then(j => send(res, 200, j), () => send(res, 502, { error: 'The light helper is not answering.' }));
+}
+function lightSend(ev) { if (settings.light) fetch(`${LIGHT}/${ev}`, { method: 'POST', body: '{}', signal: AbortSignal.timeout(2000) }).catch(() => {}); }
+function lightLimits() {
+  const L = limits(), now = Date.now(), reset = L.fh.reset || 0;
+  if (L.fh.pct >= 80 && reset > now && lightFor !== reset) { lightFor = lightReset = reset; lightSend('PulseLimit'); }
+  else if (lightReset && now >= lightReset) { lightReset = 0; lightSend('PulseReset'); }
+}
+process.on('exit', () => lightProc && lightProc.kill());
 
 // Without live mode: weekly reset projected from the last exact reset seen in Cowork logs (it keeps its
 // weekday and time). The 5-hour reset is only shown when exact: estimating it from local activity was
@@ -676,10 +702,23 @@ const server = http.createServer((req, res) => {
     return send(res, 200, { fh: L.fh.pct, fhReset: L.fh.reset, fhExact: L.fh.exact, sd: L.sd.pct, sdReset: L.sd.reset,
       alerts: settings.alerts, live: liveSessions().length, recent });
   }
+  if (req.method === 'GET' && url.pathname === '/api/tray/state') {   // cheap, polled every few seconds by the tray icon
+    const L = limits(), live = liveSessions();
+    const out = { fh: L.fh.pct, live: live.length, busy: live.filter(x => x.status === 'busy').length, waiting: 0 };
+    if (!lightProc) return send(res, 200, out);
+    return fetch(LIGHT + '/status', { signal: AbortSignal.timeout(800) }).then(r => r.json())
+      .then(j => send(res, 200, { ...out, waiting: j.waiting || 0 }), () => send(res, 200, out));
+  }
   if (req.method === 'GET' && url.pathname === '/api/settings') {
     return send(res, 200, { liveLimits: settings.liveLimits, lan: settings.lan, alerts: settings.alerts, ip: lanIP(), port: PORT,
+      light: settings.light, lightScript: settings.lightScript, lightPaused: settings.lightPaused,
       devices: settings.devices.map(({ id, name, added, seen }) => ({ id, name, added, seen })) });
   }
+  if (req.method === 'GET' && url.pathname === '/api/light') {
+    return fetch(LIGHT + '/status', { signal: AbortSignal.timeout(3000) }).then(r => r.json())
+      .then(j => send(res, 200, { running: true, ...j }), () => send(res, 200, { running: false }));
+  }
+  if (req.method === 'GET' && url.pathname === '/api/light/bulbs') return lightCall(res, '/bulbs');
   if (req.method === 'POST' && url.pathname.startsWith('/api/')) {
     if (req.headers['x-pulse-token'] !== TOKEN) return send(res, 403, { error: 'bad token' });
     let raw = '';
@@ -692,9 +731,21 @@ const server = http.createServer((req, res) => {
         else if (p === '/api/open') openUrl(String(body.url || ''));
         else if (p === '/api/update/check') return send(res, 200, await checkUpdate());
         else if (p === '/api/update') return send(res, 200, applyUpdate());
+        else if (p === '/api/light/test') lightSend('Test');
+        else if (p === '/api/light/control') return lightCall(res, '/control', body);
+        else if (p === '/api/light/pause') {
+          settings.lightPaused = !!body.on; saveSettings();
+          return lightCall(res, '/Pause', { on: settings.lightPaused });
+        }
         else if (p === '/api/rescan') { cache = { v: CACHE_VERSION, files: {} }; statsMemo = null; scan(); }
         else if (p === '/api/settings') {
-          for (const k of ['liveLimits', 'alerts']) if (typeof body[k] === 'boolean') settings[k] = body[k];
+          for (const k of ['liveLimits', 'alerts', 'light']) if (typeof body[k] === 'boolean') settings[k] = body[k];
+          if (typeof body.lightScript === 'string') {
+            const f = body.lightScript.trim().replace(/^"|"$/g, '');
+            if (f && !(/\.py$/i.test(f) && fs.existsSync(f))) throw new Error('Pick an existing .py file.');
+            if (f !== settings.lightScript && lightProc) lightProc.kill();
+            settings.lightScript = f;
+          }
           if (typeof body.lan === 'boolean' && body.lan !== settings.lan) {
             settings.lan = body.lan; if (!body.lan) pairing = null;
             res.on('finish', relisten); // rebinding drops open connections, so answer first
@@ -702,6 +753,7 @@ const server = http.createServer((req, res) => {
           saveSettings();
           if (body.liveLimits) await refreshLive(true);
           if (body.liveLimits === false) { live.data = null; live.err = ''; }
+          if ('light' in body || 'lightScript' in body) lightSync();
           return send(res, 200, { ok: true, liveErr: live.err });
         } else if (p === '/api/pair') {
           const ip = lanIP();
@@ -730,4 +782,5 @@ server.on('error', e => { console.error(e.message); process.exit(e.code === 'EAD
 relisten();
 scan();
 setTimeout(checkUpdate, 15000); setInterval(checkUpdate, 12 * 3600e3).unref();
-setInterval(() => { if (!indexing.running && Date.now() - lastScan > 60000) scan(); refreshLive(); notify(); }, 30000).unref();
+setInterval(() => { if (!indexing.running && Date.now() - lastScan > 60000) scan(); refreshLive(); notify(); lightLimits(); }, 30000).unref();
+lightSync();
