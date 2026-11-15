@@ -733,6 +733,7 @@ const server = http.createServer((req, res) => {
         else if (p === '/api/update') return send(res, 200, applyUpdate());
         else if (p === '/api/light/test') lightSend('Test');
         else if (p === '/api/light/control') return lightCall(res, '/control', body);
+        else if (p === '/api/light/mode') return lightCall(res, '/Mode', { mode: String(body.mode || 'off') });
         else if (p === '/api/light/pause') {
           settings.lightPaused = !!body.on; saveSettings();
           return lightCall(res, '/Pause', { on: settings.lightPaused });

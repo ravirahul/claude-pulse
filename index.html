@@ -412,6 +412,11 @@ textarea.input{resize:none;height:76px}
     <button class="iconbtn close" aria-label="Close"><svg class="i"><use href="#i-x"/></svg></button></h3>
   <p class="note" id="lbNote" aria-live="polite" style="margin:-4px 0 4px">Reading the light…</p>
   <div class="lctl">
+    <div class="lrow"><div class="hd"><span id="lbModeLabel">Mode</span><span class="sp"></span>
+      <div class="seg" id="lbMode" role="group" aria-labelledby="lbModeLabel"><span class="thumb"></span>
+        <button type="button" data-m="off" aria-pressed="true">Normal</button><button type="button" data-m="music" aria-pressed="false">Music</button><button type="button" data-m="screen" aria-pressed="false">Screen</button>
+      </div></div>
+      <p class="note" id="lbModeNote" style="margin-top:6px"></p></div>
     <div class="lrow"><div class="hd"><span>Power</span><span class="sp"></span>
       <label class="switch"><input type="checkbox" id="lbOn" aria-label="Light power"><span></span></label></div></div>
     <div class="lrow"><div class="hd"><label for="lbBri">Brightness</label><span class="sp"></span><span class="mono note" id="lbBriV">–</span></div>
@@ -1016,6 +1021,7 @@ function bulbBtnSync(s) { $('#bulbBtn').hidden = !s || !s.light || state.remote;
 function renderBulbs(j) {
   const all = j.bulbs || [], ok = all.filter(b => b.ok), b = ok[0], bad = all.filter(x => !x.ok).map(x => x.name);
   $('#lbPause').checked = !!j.paused;
+  if (j.mode) setModeUI(j.mode);
   $('#lbNote').textContent = !all.length ? 'No lights set up yet.'
     : !b ? "Couldn't reach the light. It may be switched off at the wall, or its Wi-Fi is weak. Try again in a moment."
     : ok.map(x => x.name).join(', ') + (bad.length ? ` · not answering: ${bad.join(', ')}` : '') + (j.paused ? ' · Claude signals paused' : '');
@@ -1043,6 +1049,7 @@ async function lightDo(url, body) {
   finally { $('#lightSheet').removeAttribute('aria-busy'); }
 }
 async function lightControl(cmd) {
+  setModeUI('off');
   const list = await lightDo('/api/light/control', cmd);
   if (!list) return;
   if (list.some(x => !x.ok)) toast("The light didn't answer. Try again.");
@@ -1054,6 +1061,20 @@ async function openLight() {
   const j = await lightDo('/api/light/bulbs'); j && renderBulbs(j);
 }
 $('#bulbBtn').addEventListener('click', openLight);
+const MODE_NOTE = { off: '', music: 'Flashes and changes colour on the beat of whatever this computer is playing.',
+  screen: "Follows the main colour on your monitor, about 4 times a second." };
+function setModeUI(m) {
+  $$('#lbMode button').forEach(b => b.setAttribute('aria-pressed', String(b.dataset.m === m)));
+  requestAnimationFrame(() => moveThumb($('#lbMode'), $(`#lbMode button[data-m="${m}"]`), $('#lbMode .thumb')));
+  $('#lbModeNote').textContent = MODE_NOTE[m] || '';
+}
+$('#lbMode').addEventListener('click', async e => {
+  const b = e.target.closest('button[data-m]'); if (!b) return;
+  const prev = $('#lbMode button[aria-pressed="true"]').dataset.m;
+  setModeUI(b.dataset.m);
+  const j = await lightDo('/api/light/mode', { mode: b.dataset.m });
+  if (!j || j.error) { setModeUI(prev); toast((j && j.error) || "Couldn't change the mode."); }
+});
 $('#lbOn').addEventListener('change', e => lightControl({ on: e.target.checked }));
 $('#lbBri').addEventListener('input', e => { $('#lbBriV').textContent = e.target.value + '%'; });
 $('#lbBri').addEventListener('change', e => lightControl({ brightness: +e.target.value, ...(lightCur && lightCur.mode === 'colour' ? { colour: lightCur.colour } : {}) }));
